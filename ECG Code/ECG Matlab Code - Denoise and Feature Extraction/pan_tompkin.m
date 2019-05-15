@@ -1,116 +1,5 @@
 function [qrs_i_raw,qrs_amp_raw,ecg_h,delay]=pan_tompkin(ecg,fs,gr)
 
-%% function [qrs_amp_raw,qrs_i_raw,delay]=pan_tompkin(ecg,fs)
-% Complete implementation of Pan-Tompkins algorithm
-
-%% Inputs
-% ecg : raw ecg vector signal 1d signal
-% fs : sampling frequency e.g. 200Hz, 400Hz and etc
-% gr : flag to plot or not plot (set it 1 to have a plot or set it zero not
-% to see any plots
-%% Outputs
-% qrs_amp_raw : amplitude of R waves amplitudes
-% qrs_i_raw : index of R waves
-% delay : number of samples which the signal is delayed due to the
-% filtering
-%% Method :
-
-%% PreProcessing
-% 1) Signal is preprocessed , if the sampling frequency is higher then it is downsampled
-% and if it is lower upsampled to make the sampling frequency 200 Hz
-% with the same filtering setups introduced in Pan
-% tompkins paper (a combination of low pass and high pass filter 5-15 Hz)
-% to get rid of the baseline wander and muscle noise. 
-
-% 2) The filtered signal
-% is derivated using a derivating filter to high light the QRS complex.
-
-% 3) Signal is squared.
-
-% 4)Signal is averaged with a moving window to get rid
-% of noise (0.150 seconds length).
-
-% 5) depending on the sampling frequency of your signal the filtering
-% options are changed to best match the characteristics of your ecg signal
-
-% 6) Unlike the other implementations, in this implementation the desicion
-% rule of the Pan tompkins is implemented completely.
-
-%% Decision Rule 
-% At this point in the algorithm, the preceding stages have produced a roughly pulse-shaped
-% waveform at the output of the MWI . The determination as to whether this pulse
-% corresponds to a QRS complex (as opposed to a high-sloped T-wave or a noise artefact) is
-% performed with an adaptive thresholding operation and other decision
-% rules outlined below;
-
-% a) FIDUCIAL MARK - The waveform is first processed to produce a set of weighted unit
-% samples at the location of the MWI maxima. This is done in order to localize the QRS
-% complex to a single instant of time. The w[k] weighting is the maxima value.
-
-% b) THRESHOLDING - When analyzing the amplitude of the MWI output, the algorithm uses
-% two threshold values (THR_SIG and THR_NOISE, appropriately initialized during a brief
-% 2 second training phase) that continuously adapt to changing ECG signal quality. The
-% first pass through y[n] uses these thresholds to classify the each non-zero sample
-% (CURRENTPEAK) as either signal or noise:
-% If CURRENTPEAK > THR_SIG, that location is identified as a QRS complex
-% candidate and the signal level (SIG_LEV) is updated:
-% SIG _ LEV = 0.125 CURRENTPEAK + 0.875 SIG _ LEV
-
-% If THR_NOISE < CURRENTPEAK < THR_SIG, then that location is identified as a
-% noise peak and the noise level (NOISE_LEV) is updated:
-% NOISE _ LEV = 0.125CURRENTPEAK + 0.875 NOISE _ LEV
-% Based on new estimates of the signal and noise levels (SIG_LEV and NOISE_LEV,
-% respectively) at that point in the ECG, the thresholds are adjusted as follows:
-% THR _ SIG = NOISE _ LEV + 0.25  (SIG _ LEV ? NOISE _ LEV )
-% THR _ NOISE = 0.5 (THR _ SIG)
-% These adjustments lower the threshold gradually in signal segments that are deemed to
-% be of poorer quality.
-
-
-% c) SEARCHBACK FOR MISSED QRS COMPLEXES - In the thresholding step above, if
-% CURRENTPEAK < THR_SIG, the peak is deemed not to have resulted from a QRS
-% complex. If however, an unreasonably long period has expired without an abovethreshold
-% peak, the algorithm will assume a QRS has been missed and perform a
-% searchback. This limits the number of false negatives. The minimum time used to trigger
-% a searchback is 1.66 times the current R peak to R peak time period (called the RR
-% interval). This value has a physiological origin - the time value between adjacent
-% heartbeats cannot change more quickly than this. The missed QRS complex is assumed
-% to occur at the location of the highest peak in the interval that lies between THR_SIG and
-% THR_NOISE. In this algorithm, two average RR intervals are stored,the first RR interval is 
-% calculated as an average of the last eight QRS locations in order to adapt to changing heart 
-% rate and the second RR interval mean is the mean 
-% of the most regular RR intervals . The threshold is lowered if the heart rate is not regular 
-% to improve detection.
-
-% d) ELIMINATION OF MULTIPLE DETECTIONS WITHIN REFRACTORY PERIOD - It is
-% impossible for a legitimate QRS complex to occur if it lies within 200ms after a previously
-% detected one. This constraint is a physiological one  due to the refractory period during
-% which ventricular depolarization cannot occur despite a stimulus[1]. As QRS complex
-% candidates are generated, the algorithm eliminates such physically impossible events,
-% thereby reducing false positives.
-
-% e) T WAVE DISCRIMINATION - Finally, if a QRS candidate occurs after the 200ms
-% refractory period but within 360ms of the previous QRS, the algorithm determines
-% whether this is a genuine QRS complex of the next heartbeat or an abnormally prominent
-% T wave. This decision is based on the mean slope of the waveform at that position. A slope of
-% less than one half that of the previous QRS complex is consistent with the slower
-% changing behaviour of a T wave, otherwise, it becomes a QRS detection.
-% Extra concept : beside the points mentioned in the paper, this code also
-% checks if the occured peak which is less than 360 msec latency has also a
-% latency less than 0.5*mean_RR if yes this is counted as noise
-
-% f) In the final stage , the output of R waves detected in smoothed signal is analyzed and double
-% checked with the help of the output of the bandpass signal to improve
-% detection and find the original index of the real R waves on the raw ecg
-% signal
-
-%% References :
-
-%[1]PAN.J, TOMPKINS. W.J,"A Real-Time QRS Detection Algorithm" IEEE
-%TRANSACTIONS ON BIOMEDICAL ENGINEERING, VOL. BME-32, NO. 3, MARCH 1985.
-
-
-%%
 if ~isvector(ecg)
   error('ecg must be a row or column vector');
 end
@@ -405,9 +294,6 @@ for i = 1 : length(pks)
     end
     
     
-    
- 
-    
     %% adjust the threshold with SNR
     if NOISE_LEV ~= 0 || SIG_LEV ~= 0
         THR_SIG = NOISE_LEV + 0.25*(abs(SIG_LEV - NOISE_LEV));
@@ -438,19 +324,6 @@ THRS_buf1 = [THRS_buf1 THR_SIG1];
  not_nois = 0; %reset parameters
  ser_back = 0;  %reset bandpass param   
 end
-%{
-if gr
-  hold on,scatter(qrs_i,qrs_c,'m');
-  hold on,plot(locs,NOISL_buf,'--k','LineWidth',2);
-  hold on,plot(locs,SIGL_buf,'--r','LineWidth',2);
-  hold on,plot(locs,THRS_buf,'--g','LineWidth',2);
- if any(ax)
-  ax(~ax) = []; 
-  linkaxes(ax,'x');
-  zoom on;
- end
-end
-%}
 
 %% overlay on the signals
 %{
@@ -474,67 +347,4 @@ hr=zeros();
 for i=2:length(location)
     hr(i)=200*60/(location(i)-location(i-1));
 end
-
-i=[0];
-ecg=ecg/3;
-ecg_h=ecg_h*85;
-m=[ecg(1);ecg_h(1);mean(abs(ecg(1)));ecg(1)/mean(ecg(1))];
-p=plot(i,m,'EraseMode','background','MarkerSize',5);
-title('raw data and filtered signal');
-xlabel('time');
-%ylabel('amptitude');
-legend('raw data','filtered signal','mean amplitude','amplitude ratio');
-x=0;k1=1;k2=1;
-axis([x x+200 -100 100]);
-grid on;
-for t=1:min(length(ecg),length(ecg_h))-1
-    i=[i t];
-    m=[m [ecg(t+1);ecg_h(t+1);mean(abs(ecg(1:t+1)));abs(ecg(t+1))/mean(abs(ecg(1:t+1)))]];
-    set(p(1),'XData',i,'YData',m(1,:))
-    set(p(2),'XData',i,'YData',m(2,:))
-    set(p(3),'XData',i,'YData',m(3,:))
-    set(p(4),'XData',i,'YData',m(4,:))
-%     if t==qrs_i_raw(k1) && k1<length(qrs_i_raw)
-%         %hold on,scatter(qrs_i_raw(k1),75*qrs_amp_raw(k1),'b','filled');
-%         fprintf('R wave amplitude/mean amplitude(ratio)');
-%         fprintf('%.2f\t',qrs_amp_raw(k1)/mean(abs(ecg(1:t+1))));
-%         k1 = k1+1;
-%     end
-    if t==location(k2) && k2<length(hr)
-        hold on,scatter(t,hr(k2),'r','filled');
-        fprintf('heart rate(red point) : ');
-        fprintf('%.2f\t',hr(k2));
-        if k2>1
-           hrv(k2) = std(hr(1:k2));
-           fprintf('heart rate variability : ');
-           fprintf('%.2f\n',hrv(k2));
-        end
-        k2 = k2+1;
-    end
-    drawnow
-    if t > 100
-        x = x + 1;
-    end
-    axis([x x+200 -100 100]);
-    %pause(0.1);
-end
-%}
-    
-%{
-figure,az(1)=subplot(311);plot(ecg_h);title('QRS on Filtered Signal');axis tight;
-hold on,scatter(qrs_i_raw,qrs_amp_raw,'m');
-hold on,plot(locs,NOISL_buf1,'LineWidth',2,'Linestyle','--','color','k');
-hold on,plot(locs,SIGL_buf1,'LineWidth',2,'Linestyle','-.','color','r');
-hold on,plot(locs,THRS_buf1,'LineWidth',2,'Linestyle','-.','color','g');
-az(2)=subplot(312);plot(ecg_m);title('QRS on MVI signal and Noise level(black),Signal Level (red) and Adaptive Threshold(green)');axis tight;
-hold on,scatter(qrs_i,qrs_c,'m');
-hold on,plot(locs,NOISL_buf,'LineWidth',2,'Linestyle','--','color','k');
-hold on,plot(locs,SIGL_buf,'LineWidth',2,'Linestyle','-.','color','r');
-hold on,plot(locs,THRS_buf,'LineWidth',2,'Linestyle','-.','color','g');
-az(3)=subplot(313);plot(ecg-mean(ecg));title('Pulse train of the found QRS on ECG signal');axis tight;
-line(repmat(qrs_i_raw,[2 1]),repmat([min(ecg-mean(ecg))/2; max(ecg-mean(ecg))/2],size(qrs_i_raw)),'LineWidth',2.5,'LineStyle','-.','Color','r');
-linkaxes(az,'x');
-zoom on;
-end
-%}
 
